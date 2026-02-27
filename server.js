@@ -8,8 +8,11 @@ const ACTIVE_TASKS = 6;
 
 let teams = [];
 let nextTeamId = 1;
+let contestStartTime = null;
 
+// =======================
 // Tworzenie drużyny
+// =======================
 function createTeam(name, startTask) {
     let tasks = Array(MAX_TASKS).fill("grey");
     let taskStartTimes = Array(MAX_TASKS).fill(null);
@@ -18,41 +21,79 @@ function createTeam(name, startTask) {
         let idx = startTask - 1 + i;
         if (idx < MAX_TASKS) {
             tasks[idx] = "empty";
-            taskStartTimes[idx] = Date.now(); // czas przydzielenia
+            taskStartTimes[idx] = null; // ustawimy po starcie zawodów
         }
     }
 
     return {
         id: nextTeamId++,
         name,
-        points: 0,
         startTask,
         tasks,
         taskStartTimes,
-        solves: [] // { task: num, time: ms od przydzielenia }
+        solves: [] // { task, time (ms od przydzielenia) }
     };
 }
 
+// =======================
 // Dodanie drużyny
+// =======================
 app.post("/add-team", (req, res) => {
     if (teams.length >= 9)
         return res.json({ error: "Max 9 drużyn" });
 
     const { name, startTask } = req.body;
+
     const team = createTeam(name, startTask);
     teams.push(team);
 
     res.json({ success: `Dodano drużynę nr ${team.id}` });
 });
 
-// Pobranie rankingów (sortowana kopia)
-app.get("/teams", (req, res) => {
-    const sorted = [...teams].sort((a, b) => b.points - a.points);
-    res.json(sorted);
+// =======================
+// Start zawodów
+// =======================
+app.post("/start-contest", (req, res) => {
+    if (contestStartTime !== null)
+        return res.json({ error: "Zawody już rozpoczęte" });
+
+    contestStartTime = Date.now();
+
+    // ustaw czas przydzielenia dla początkowych zadań
+    teams.forEach(team => {
+        team.tasks.forEach((status, i) => {
+            if (status === "empty") {
+                team.taskStartTimes[i] = contestStartTime;
+            }
+        });
+    });
+
+    res.json({ success: "Zawody rozpoczęte" });
 });
 
-// Skanowanie kodu
+// =======================
+// Pobranie drużyn (ranking live)
+// =======================
+app.get("/teams", (req, res) => {
+
+    const ranking = teams.map(team => ({
+        id: team.id,
+        name: team.name,
+        tasks: team.tasks,
+        solved: team.solves.length
+    }));
+
+    res.json(ranking);
+});
+
+// =======================
+// Skanowanie zadania
+// =======================
 app.post("/scan", (req, res) => {
+
+    if (!contestStartTime)
+        return res.json({ error: "Zawody jeszcze się nie rozpoczęły" });
+
     const { code } = req.body;
 
     if (!code || code.length !== 4)
@@ -66,6 +107,7 @@ app.post("/scan", (req, res) => {
         return res.json({ error: "Nie istnieje drużyna o tym numerze" });
 
     const idx = taskNumber - 1;
+
     if (idx < 0 || idx >= MAX_TASKS)
         return res.json({ error: "Nieprawidłowy numer zadania" });
 
@@ -75,63 +117,112 @@ app.post("/scan", (req, res) => {
     if (team.tasks[idx] !== "empty")
         return res.json({ error: "Drużyna nie powinna mieć tego zadania" });
 
-    // Czas od przydzielenia zadania
-    const startTime = team.taskStartTimes[idx];
-    const solveTime = Date.now() - startTime;
+    // oblicz czas rozwiązania (od przydzielenia)
+    const solveTime = Date.now() - team.taskStartTimes[idx];
 
     team.tasks[idx] = "full";
-    team.points++;
-    team.solves.push({ task: taskNumber, time: solveTime });
+    team.solves.push({
+        task: taskNumber,
+        time: solveTime
+    });
 
+    // =======================
     // Przydzielenie następnego zadania
-    const next = idx + ACTIVE_TASKS;
-    if (next < MAX_TASKS && team.tasks[next] === "grey") {
-        team.tasks[next] = "empty";
-        team.taskStartTimes[next] = Date.now();
+    // =======================
+    const highestGivenIndex = team.tasks
+        .map((status, i) => status !== "grey" ? i : -1)
+        .filter(i => i !== -1)
+        .reduce((a, b) => Math.max(a, b), -1);
+
+    const nextIndex = highestGivenIndex + 1;
+
+    if (nextIndex < MAX_TASKS) {
+        team.tasks[nextIndex] = "empty";
+        team.taskStartTimes[nextIndex] = Date.now();
     }
 
     res.json({ success: `Drużyna ${team.name} rozwiązała zadanie ${taskNumber}` });
 });
 
-// Podsumowanie
+// =======================
+// PODSUMOWANIE
+// =======================
 app.get("/summary", (req, res) => {
 
-    // ranking drużyn
     const teamSummary = teams.map(team => {
+
         let avgTime = 0;
+        let highestTask = 0;
+        let lastSubmissionTime = 0;
+
         if (team.solves.length > 0) {
+
+            // średni czas od przydzielenia
             const total = team.solves.reduce((a, s) => a + s.time, 0);
             avgTime = total / team.solves.length;
+
+            // najwyższe zadanie
+            highestTask = Math.max(...team.solves.map(s => s.task));
+
+            // czas oddania ostatniego zadania od startu konkursu
+            const lastSolve = team.solves[team.solves.length - 1];
+            const solveTimestamp =
+                team.taskStartTimes[lastSolve.task - 1] + lastSolve.time;
+
+            lastSubmissionTime = solveTimestamp - contestStartTime;
         }
+
         return {
-            id: team.id,
             name: team.name,
-            points: team.points,
             solved: team.solves.length,
-            avgSeconds: Math.round(avgTime / 1000)
+            avgSeconds: Math.round(avgTime / 1000),
+            highestTask,
+            lastSubmissionSeconds: Math.round(lastSubmissionTime / 1000)
         };
     });
 
-    // statystyki zadań
-    const taskStats = [];
-for (let i = 0; i < MAX_TASKS; i++) {
-    const solvedBy = teams.filter(team => team.solves.some(s => s.task === i + 1));
-    let avgTime = 0;
-    if (solvedBy.length > 0) {
-        const total = solvedBy.reduce((sum, team) => {
-            const s = team.solves.find(s => s.task === i + 1);
-            return sum + s.time; // czas w ms
-        }, 0);
-        avgTime = total / solvedBy.length / 1000; // konwersja na sekundy
-    }
-    taskStats.push({
-        task: i + 1,
-        solvedBy: solvedBy.length,
-        avgSeconds: Math.round(avgTime)
-    });
-}
+    // =======================
+    // SORTOWANIE JAK NABOJ
+    // =======================
+    const sortedTeams = [...teamSummary].sort((a, b) => {
 
-    const sortedTeams = [...teamSummary].sort((a, b) => b.points - a.points);
+        if (b.solved !== a.solved)
+            return b.solved - a.solved;
+
+        if (b.highestTask !== a.highestTask)
+            return b.highestTask - a.highestTask;
+
+        return a.lastSubmissionSeconds - b.lastSubmissionSeconds;
+    });
+
+    // =======================
+    // STATYSTYKI ZADAŃ
+    // =======================
+    const taskStats = [];
+
+    for (let i = 0; i < MAX_TASKS; i++) {
+
+        const solvedTeams = teams.filter(team =>
+            team.solves.some(s => s.task === i + 1)
+        );
+
+        let avgTime = 0;
+
+        if (solvedTeams.length > 0) {
+            const total = solvedTeams.reduce((sum, team) => {
+                const s = team.solves.find(s => s.task === i + 1);
+                return sum + s.time;
+            }, 0);
+
+            avgTime = total / solvedTeams.length / 1000;
+        }
+
+        taskStats.push({
+            task: i + 1,
+            solvedBy: solvedTeams.length,
+            avgSeconds: Math.round(avgTime)
+        });
+    }
 
     res.json({
         teams: sortedTeams,
@@ -139,4 +230,6 @@ for (let i = 0; i < MAX_TASKS; i++) {
     });
 });
 
-app.listen(3000, () => console.log("Serwer działa na http://localhost:3000"));
+app.listen(3000, () =>
+    console.log("Serwer działa na http://localhost:3000")
+);

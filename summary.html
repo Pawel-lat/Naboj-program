@@ -20,10 +20,11 @@ thead { background: lightgray; }
 <thead>
 <tr>
 <th>Miejsce</th>
-<th>Drużyna</th>
-<th>Punkty</th>
-<th>Liczba oddań</th>
-<th>Średni czas między oddaniami (s)</th>
+<th>Nazwa drużyny</th>
+<th>Ilość zrobionych zadań</th>
+<th>Średni czas na zadanie (s)</th>
+<th>Najwyższy numer zadania</th>
+<th>Czas oddania ostatniego zadania (s)</th>
 </tr>
 </thead>
 <tbody id="teamSummary"></tbody>
@@ -49,16 +50,17 @@ async function loadSummary() {
     const teamTable = document.getElementById("teamSummary");
     teamTable.innerHTML = "";
     data.teams.forEach((team, index) => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${index+1}</td>
-            <td>${team.name}</td>
-            <td>${team.points}</td>
-            <td>${team.solved}</td>
-            <td>${team.avgSeconds}</td>
-        `;
-        teamTable.appendChild(row);
-    });
+    const row = document.createElement("tr");
+    row.innerHTML = `
+        <td>${index+1}</td>
+        <td>${team.name}</td>
+        <td>${team.solved}</td>
+        <td>${team.avgSeconds}</td>
+        <td>${team.highestTask}</td>
+        <td>${team.lastSubmissionSeconds}</td>
+    `;
+    teamTable.appendChild(row);
+});
 
     const taskTable = document.getElementById("taskSummary");
     taskTable.innerHTML = "";
