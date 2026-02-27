@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Podsumowanie konkursu</title>
+<style>
+body { font-family: Arial; text-align:center; }
+h1 { margin-bottom: 20px; }
+table { margin:auto; border-collapse: collapse; margin-bottom:40px; }
+td, th { border:1px solid black; padding:8px; }
+thead { background: lightgray; }
+</style>
+</head>
+<body>
+
+<h1>Podsumowanie konkursu</h1>
+
+<h2>Ranking drużyn</h2>
+<table>
+<thead>
+<tr>
+<th>Miejsce</th>
+<th>Drużyna</th>
+<th>Punkty</th>
+<th>Liczba oddań</th>
+<th>Średni czas między oddaniami (s)</th>
+</tr>
+</thead>
+<tbody id="teamSummary"></tbody>
+</table>
+
+<h2>Statystyki zadań</h2>
+<table>
+<thead>
+<tr>
+<th>Zadanie</th>
+<th>Liczba drużyn, które je zrobiły</th>
+<th>Średni czas rozwiązania (s)</th>
+</tr>
+</thead>
+<tbody id="taskSummary"></tbody>
+</table>
+
+<script>
+async function loadSummary() {
+    const res = await fetch("/summary");
+    const data = await res.json();
+
+    const teamTable = document.getElementById("teamSummary");
+    teamTable.innerHTML = "";
+    data.teams.forEach((team, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${index+1}</td>
+            <td>${team.name}</td>
+            <td>${team.points}</td>
+            <td>${team.solved}</td>
+            <td>${team.avgSeconds}</td>
+        `;
+        teamTable.appendChild(row);
+    });
+
+    const taskTable = document.getElementById("taskSummary");
+    taskTable.innerHTML = "";
+    data.tasks.forEach(task => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${task.task}</td>
+            <td>${task.solvedBy}</td>
+            <td>${task.avgSeconds}</td>
+        `;
+        taskTable.appendChild(row);
+    });
+}
+
+loadSummary();
+</script>
+
+</body>
+</html>

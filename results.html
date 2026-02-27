@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Wyniki</title>
+<style>
+body { 
+    font-family: Arial; 
+    text-align:center; 
+}
+
+.team {
+    margin: 25px;
+}
+
+.team-name {
+    font-size: 26px;
+    margin-bottom: 6px;
+}
+
+.tasks {
+    display: inline-block;
+    max-width: 1400px;
+}
+
+.task {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+    margin: 1px;
+}
+
+.task-group {
+    display: inline-block;
+    margin-right: 8px; /* przerwa co 5 */
+}
+
+.grey { background: lightgrey; }
+.empty { background: white; border: 1px solid black; }
+.full { background: green; }
+</style>
+</head>
+<body>
+
+<h1>TABLICA WYNIKÓW</h1>
+
+<div id="scoreboard"></div>
+
+<script>
+async function refresh() {
+    const res = await fetch("/teams");
+    const teams = await res.json();
+
+    const div = document.getElementById("scoreboard");
+    div.innerHTML = "";
+
+    teams.forEach((t, index) => {
+
+        const teamDiv = document.createElement("div");
+        teamDiv.className = "team";
+
+        const nameDiv = document.createElement("div");
+        nameDiv.className = "team-name";
+        nameDiv.innerHTML =
+            (index + 1) + ". <b>" +
+            t.name + "</b> — " +
+            t.points + " pkt";
+
+        teamDiv.appendChild(nameDiv);
+
+        const tasksDiv = document.createElement("div");
+        tasksDiv.className = "tasks";
+
+        // grupowanie co 5
+        for (let i = 0; i < t.tasks.length; i += 5) {
+            const group = document.createElement("div");
+            group.className = "task-group";
+
+            for (let j = i; j < i + 5 && j < t.tasks.length; j++) {
+                const box = document.createElement("div");
+                box.className = "task " + t.tasks[j];
+                group.appendChild(box);
+            }
+
+            tasksDiv.appendChild(group);
+        }
+
+        teamDiv.appendChild(tasksDiv);
+        div.appendChild(teamDiv);
+    });
+}
+
+setInterval(refresh, 2000);
+refresh();
+</script>
+
+</body>
+</html>
